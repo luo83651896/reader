@@ -16,6 +16,7 @@
       @touchstart="handleTouchStart"
       @touchmove="handleTouchMove"
       @touchend="handleTouchEnd"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="navigation-inner-wrapper">
         <div class="navigation-title">
@@ -113,7 +114,7 @@
               <el-option
                 v-for="(item, index) in concurrentList"
                 :key="'source-' + index"
-                :label="item"
+                :label="item + '并发线程'"
                 :value="item"
               >
               </el-option>
@@ -236,39 +237,58 @@
             />
           </div>
         </div>
-        <div
-          class="setting-wrapper"
-          v-if="
-            !$store.state.isSecureMode || $store.state.userInfo.enableWebdav
-          "
-        >
+        <div class="setting-wrapper">
           <div class="setting-title">
-            WebDAV
+            书架设置
           </div>
           <div class="setting-item">
             <el-tag
               type="info"
-              :effect="isNight ? 'dark' : 'light'"
-              slot="reference"
+              :effect="$store.getters.isNight ? 'dark' : 'light'"
               class="setting-btn"
-              @click="showWebdavFile('/')"
+              @click="showManageBookGroup"
             >
-              文件管理
+              分组管理
             </el-tag>
             <el-tag
               type="info"
-              :effect="isNight ? 'dark' : 'light'"
-              slot="reference"
+              :effect="$store.getters.isNight ? 'dark' : 'light'"
               class="setting-btn"
-              @click="backupToWebdav"
+              @click="importLocalBook"
             >
-              保存备份
+              导入书籍
+            </el-tag>
+            <input
+              ref="bookRef"
+              type="file"
+              multiple="multiple"
+              @change="onBookFileChange"
+              style="display:none"
+            />
+            <el-tag
+              type="info"
+              :effect="$store.getters.isNight ? 'dark' : 'light'"
+              class="setting-btn"
+              @click="showLocalStoreManageDialog = true"
+              v-if="
+                !$store.state.isSecureMode ||
+                  $store.state.userInfo.enableLocalStore
+              "
+            >
+              浏览书仓
             </el-tag>
           </div>
         </div>
+
         <div class="setting-wrapper">
           <div class="setting-title">
             用户空间
+            <span
+              class="right-text"
+              v-if="$store.state.isSecureMode && $store.state.userInfo.username"
+              @click="logout()"
+              >注销</span
+            >
           </div>
           <div class="setting-item" v-if="$store.state.showManagerMode">
             <el-select
@@ -340,34 +360,78 @@
             </el-tag>
           </div>
         </div>
+        <div
+          class="setting-wrapper"
+          v-if="
+            !$store.state.isSecureMode || $store.state.userInfo.enableWebdav
+          "
+        >
+          <div class="setting-title">
+            WebDAV
+          </div>
+          <div class="setting-item">
+            <el-tag
+              type="info"
+              :effect="isNight ? 'dark' : 'light'"
+              slot="reference"
+              class="setting-btn"
+              @click="showWebdavFile('/')"
+            >
+              文件管理
+            </el-tag>
+            <el-tag
+              type="info"
+              :effect="isNight ? 'dark' : 'light'"
+              slot="reference"
+              class="setting-btn"
+              @click="backupToWebdav"
+            >
+              保存备份
+            </el-tag>
+          </div>
+        </div>
         <div class="setting-wrapper">
           <div class="setting-title">
-            书架设置
+            本地缓存
+            <span class="right-text">{{ localCacheStats.total }}</span>
           </div>
           <div class="setting-item">
             <el-tag
               type="info"
               :effect="$store.getters.isNight ? 'dark' : 'light'"
               class="setting-btn"
-              @click="showManageBookGroup"
+              @click="clearCache('bookSourceList')"
             >
-              分组管理
+              清空书源缓存
+              <span>{{ localCacheStats.bookSourceList }}</span>
             </el-tag>
             <el-tag
               type="info"
               :effect="$store.getters.isNight ? 'dark' : 'light'"
               class="setting-btn"
-              @click="importLocalBook"
+              @click="clearCache('rssSources')"
             >
-              导入书籍
+              清空RSS源缓存
+              <span>{{ localCacheStats.rssSources }}</span>
             </el-tag>
-            <input
-              ref="bookRef"
-              type="file"
-              multiple="multiple"
-              @change="onBookFileChange"
-              style="display:none"
-            />
+            <el-tag
+              type="info"
+              :effect="$store.getters.isNight ? 'dark' : 'light'"
+              class="setting-btn"
+              @click="clearCache('chapterList')"
+            >
+              清空章节列表缓存
+              <span>{{ localCacheStats.chapterList }}</span>
+            </el-tag>
+            <el-tag
+              type="info"
+              :effect="$store.getters.isNight ? 'dark' : 'light'"
+              class="setting-btn"
+              @click="clearCache('chapterContent')"
+            >
+              清空章节内容缓存
+              <span>{{ localCacheStats.chapterContent }}</span>
+            </el-tag>
           </div>
         </div>
       </div>
@@ -402,21 +466,29 @@
       <div class="shelf-title">
         <i
           class="el-icon-menu"
-          v-if="collapseMenu"
+          v-if="$store.getters.isNormalPage && collapseMenu"
           @click.stop="toggleMenu"
         ></i>
         {{ isSearchResult ? (isExploreResult ? "探索" : "搜索") : "书架" }}
         ({{ bookList.length }})
-        <div class="title-btn" v-if="isSearchResult" @click="backToShelf">
+        <div
+          class="title-btn"
+          v-if="$store.getters.isNormalPage && isSearchResult"
+          @click="backToShelf"
+        >
           书架
         </div>
-        <div class="title-btn" v-if="isSearchResult" @click="loadMore">
+        <div
+          class="title-btn"
+          v-if="$store.getters.isNormalPage && isSearchResult"
+          @click="loadMore"
+        >
           <i class="el-icon-loading" v-if="loadingMore"></i>
           {{ loadingMore ? "加载中..." : "加载更多" }}
         </div>
         <div
           class="title-btn"
-          v-if="!isSearchResult"
+          v-if="$store.getters.isNormalPage && !isSearchResult"
           @click="showBookEditButton = !showBookEditButton"
         >
           {{ showBookEditButton ? "取消" : "编辑" }}
@@ -425,13 +497,19 @@
           <i class="el-icon-loading" v-if="refreshLoading"></i>
           {{ refreshLoading ? "刷新中..." : "刷新" }}
         </div>
-        <div class="title-btn" v-if="!isSearchResult" @click="showRssDialog">
+        <div
+          class="title-btn"
+          v-if="$store.getters.isNormalPage && !isSearchResult"
+          @click="showRssDialog"
+        >
           RSS
         </div>
         <div
           class="title-btn"
           @click="showExplorePop"
-          v-if="!(isSearchResult && !isExploreResult)"
+          v-if="
+            $store.getters.isNormalPage && !(isSearchResult && !isExploreResult)
+          "
         >
           书海
         </div>
@@ -453,7 +531,7 @@
           :effect="$store.getters.isNight ? 'dark' : 'light'"
           class="book-group-btn"
           :key="'bookGroup-manage'"
-          v-if="bookGroupDisplayList.length"
+          v-if="$store.getters.isNormalPage && bookGroupDisplayList.length"
           @click="showManageBookGroup"
         >
           管理
@@ -479,8 +557,7 @@
               <!-- <img class="cover" v-lazy="getCover(book.coverUrl)" alt="" /> -->
               <el-image
                 class="cover"
-                :src="getCover(book.coverUrl, true)"
-                :key="book.coverUrl"
+                :src="getCover(getBookCoverUrl(book), true)"
                 fit="cover"
                 lazy
               >
@@ -563,6 +640,7 @@
       :top="this.collapseMenu ? '0' : '15vh'"
       :fullscreen="collapseMenu"
       :class="isWebApp && !isNight ? 'status-bar-light-bg' : ''"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="source-container source-list-container">
         <el-checkbox-group
@@ -574,12 +652,9 @@
             :label="index"
             :key="index"
             class="source-checkbox"
-            >{{
-              isImportRssSource ? source.sourceName : source.bookSourceName
-            }}
-            {{
-              isImportRssSource ? source.sourceUrl : source.bookSourceUrl
-            }}</el-checkbox
+            >{{ isImportRssSource ? source.sourceName : source.bookSourceName }}
+            {{ isImportRssSource ? source.sourceUrl : source.bookSourceUrl }}
+            {{ getSourceTag(source) }}</el-checkbox
           >
         </el-checkbox-group>
       </div>
@@ -594,7 +669,12 @@
           >全选</el-checkbox
         >
         <span class="check-tip">已选择 {{ checkedSourceIndex.length }} 个</span>
-        <el-button size="medium" @click="showImportSourceDialog = false"
+        <el-button
+          size="medium"
+          @click="
+            showImportSourceDialog = false;
+            checkedSourceIndex = [];
+          "
           >取消</el-button
         >
         <el-button size="medium" type="primary" @click="saveSourceList"
@@ -612,21 +692,39 @@
       "
       :fullscreen="collapseMenu"
       :class="isWebApp && !isNight ? 'status-bar-light-bg-dialog' : ''"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="custom-dialog-title" slot="title">
         <span class="el-dialog__title"
           >{{ isShowFailureBookSource ? "失效书源管理" : "书源管理" }}
-          <span class="float-right span-btn" @click="editBookSource(false)"
+          <span
+            v-if="!isShowFailureBookSource"
+            class="float-right span-btn"
+            @click="deleteAllBookSource()"
+            >清空</span
+          >
+          <span
+            v-if="!isShowFailureBookSource"
+            class="float-right span-btn"
+            @click="exportBookSource()"
+            >导出</span
+          >
+          <span
+            v-if="!isShowFailureBookSource"
+            class="float-right span-btn"
+            @click="editBookSource(false)"
             >新增</span
           >
         </span>
       </div>
       <div class="source-container table-container">
         <div class="check-form" v-if="isShowFailureBookSource">
-          <span>搜索词：</span>
+          <span class="check-form-label">搜索词：</span>
           <el-input v-model="checkBookSourceConfig.keyword" size="small">
           </el-input>
-          <span style="min-width: 68px;">超时(ms)：</span>
+          <span class="check-form-label" style="min-width: 68px;">
+            超时(ms)：
+          </span>
           <el-input-number
             v-model="checkBookSourceConfig.timeout"
             :min="1000"
@@ -635,7 +733,7 @@
             size="small"
           >
           </el-input-number>
-          <span>并发数：</span>
+          <span class="check-form-label">并发数：</span>
           <el-input-number
             v-model="checkBookSourceConfig.concurrent"
             :min="3"
@@ -760,6 +858,7 @@
       :top="dialogTop"
       :fullscreen="collapseMenu"
       :class="isWebApp && !isNight ? 'status-bar-light-bg-dialog' : ''"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="source-container table-container">
         <el-table
@@ -810,6 +909,24 @@
               </el-switch>
             </template>
           </el-table-column>
+          <el-table-column
+            property="enableLocalStore"
+            label="书仓"
+            min-width="80"
+          >
+            <template slot-scope="scope">
+              <el-switch
+                v-if="scope.row.userNS !== 'default'"
+                v-model="scope.row.enableLocalStore"
+                active-color="#13ce66"
+                inactive-color="#ff4949"
+                :active-value="true"
+                :inactive-value="false"
+                @change="toggleUserLocalStore(scope.row, $event)"
+              >
+              </el-switch>
+            </template>
+          </el-table-column>
         </el-table>
       </div>
       <div slot="footer" class="dialog-footer">
@@ -836,6 +953,7 @@
       :top="dialogTop"
       :fullscreen="collapseMenu"
       :class="isWebApp && !isNight ? 'status-bar-light-bg-dialog' : ''"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="source-container table-container">
         <el-table
@@ -917,18 +1035,68 @@
     <el-dialog
       :title="'导入本地书籍' + importMultiBookTip"
       :visible.sync="showImportBookDialog"
-      :width="dialogWidth"
+      :width="dialogSmallWidth"
       :top="dialogTop"
       @closed="importBookDialogClosed"
       :fullscreen="collapseMenu"
       :class="isWebApp && !isNight ? 'status-bar-light-bg-dialog' : ''"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="source-container table-container">
         <div class="check-form">
-          <span>书名：</span>
-          <el-input v-model="importBookInfo.name" size="small"> </el-input>
-          <span style="min-width: 68px;">作者：</span>
-          <el-input v-model="importBookInfo.author" size="small"> </el-input>
+          <div class="book-cover">
+            <el-image
+              class="cover"
+              :src="getCover(getBookCoverUrl(importBookInfo), true)"
+              :key="getBookCoverUrl(importBookInfo)"
+              fit="cover"
+              lazy
+            >
+            </el-image>
+          </div>
+          <div class="book-info">
+            <div>
+              <span>书名：</span>
+              <el-input v-model="importBookInfo.name" size="small"> </el-input>
+            </div>
+            <div>
+              <span>作者：</span>
+              <el-input v-model="importBookInfo.author" size="small">
+              </el-input>
+            </div>
+            <div v-if="isShowTocRule">
+              <span>规则：</span>
+              <el-select
+                size="mini"
+                v-model="importUsedTxtRule"
+                filterable
+                placeholder="内置规则"
+              >
+                <el-option
+                  v-for="(rule, index) in $store.state.txtTocRules"
+                  :key="'txtTocRule-' + index"
+                  :label="rule.name"
+                  :value="rule.rule"
+                >
+                </el-option>
+              </el-select>
+              <el-button
+                class="toc-refresh-btn"
+                type="text"
+                @click="getChapterListByRule()"
+                >刷新目录</el-button
+              >
+            </div>
+            <div v-if="isShowTocRule">
+              <el-input
+                type="textarea"
+                :rows="2"
+                v-model="importBookInfo.tocUrl"
+                size="small"
+              >
+              </el-input>
+            </div>
+          </div>
         </div>
         <div class="chapter-title">
           章节列表({{ importBookChapters.length }})
@@ -938,7 +1106,7 @@
           :style="{ maxHeight: dialogContentHeight - 40 - 35 + 'px' }"
         >
           <p v-for="(chapter, index) in importBookChapters" :key="index">
-            {{ chapter.title }}
+            {{ index + 1 }}. {{ chapter.title }}
           </p>
         </div>
       </div>
@@ -964,6 +1132,7 @@
       :class="isWebApp && !isNight ? 'status-bar-light-bg-dialog' : ''"
       @opened="$refs.bookGroupTableRef.doLayout()"
       @closed="isShowBookGroupSettingDialog = false"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="source-container table-container">
         <el-table
@@ -1061,9 +1230,17 @@
           <div class="book-cover-bg" :style="bookCoverBgStyle"></div>
           <div class="book-cover-bg-image">
             <img
-              v-lazy="getCover(showBookInfo.coverUrl)"
+              v-lazy="getCover(getBookCoverUrl(showBookInfo))"
               :key="showBookInfo.name"
               alt=""
+              @click="triggerBookCoverRefClick"
+            />
+            <input
+              ref="bookCoverRef"
+              type="file"
+              accept="image/jpg, image/png, image/jpeg"
+              @change="onCoverFileChange"
+              style="display:none"
             />
           </div>
         </div>
@@ -1075,9 +1252,28 @@
           </div>
           <div class="book-prop book-origin">
             来源： {{ displayOriginName(showBookInfo.origin) }}
+            <el-button
+              type="text"
+              class="book-prop-btn"
+              v-if="showBookInfo.origin === 'loc_book'"
+              @click="refreshLocalBook(showBookInfo)"
+              >更新</el-button
+            >
           </div>
           <div class="book-prop book-latest">
             最新： {{ showBookInfo.latestChapterTitle }}
+            <span class="book-prop-btn">
+              追更
+              <el-switch
+                v-model="showBookInfo.canUpdate"
+                active-color="#13ce66"
+                inactive-color="#ff4949"
+                :active-value="true"
+                :inactive-value="false"
+                @change="toggleBookCanUpdate(showBookInfo)"
+              >
+              </el-switch>
+            </span>
           </div>
           <div class="book-prop book-group" v-if="!isSearchResult">
             分组： {{ displayGroupName(showBookInfo.group) }}
@@ -1099,6 +1295,7 @@
       :fullscreen="collapseMenu"
       :class="isWebApp && !isNight ? 'status-bar-light-bg-dialog' : ''"
       @closed="showRssSourceEditButton = false"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="custom-dialog-title" slot="title">
         <span class="el-dialog__title"
@@ -1157,6 +1354,7 @@
       :fullscreen="collapseMenu"
       :class="isWebApp && !isNight ? 'status-bar-light-bg-dialog' : ''"
       @closed="rssArticleList = []"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="rss-article-list-container" ref="rssArticleListRef">
         <div
@@ -1199,6 +1397,7 @@
       :fullscreen="collapseMenu"
       :class="isWebApp && !isNight ? 'status-bar-light-bg-dialog' : ''"
       @closed="rssArticleInfo = {}"
+      v-if="$store.getters.isNormalPage"
     >
       <div class="rss-article-info-container">
         <div
@@ -1209,11 +1408,20 @@
         ></div>
       </div>
     </el-dialog>
+
+    <LocalStore
+      v-model="showLocalStoreManageDialog"
+      :dialogWidth="dialogWidth"
+      :dialogTop="dialogTop"
+      :dialogContentHeight="dialogContentHeight"
+      @importFromLocalStorePreview="importMultiBooks"
+    ></LocalStore>
   </div>
 </template>
 
 <script>
 import Explore from "../components/Explore.vue";
+import LocalStore from "../components/LocalStore.vue";
 import Axios from "../plugins/axios";
 import { errorTypeList } from "../plugins/config";
 import eventBus from "../plugins/eventBus";
@@ -1227,7 +1435,8 @@ const buildURL = require("axios/lib/helpers/buildURL");
 
 export default {
   components: {
-    Explore
+    Explore,
+    LocalStore
   },
   data() {
     return {
@@ -1321,7 +1530,18 @@ export default {
 
       showRssArticleContentDialog: false,
       rssArticleInfo: {},
-      concurrentList: [12, 18, 24, 30, 36, 42, 48, 54, 60]
+      concurrentList: [12, 18, 24, 30, 36, 42, 48, 54, 60],
+
+      localCacheStats: {
+        total: "0 Bytes",
+        bookSourceList: "0 Bytes",
+        rssSources: "0 Bytes",
+        chapterList: "0 Bytes",
+        chapterContent: "0 Bytes"
+      },
+
+      showLocalStoreManageDialog: false,
+      importUsedTxtRule: ""
     };
   },
   watch: {
@@ -1371,6 +1591,11 @@ export default {
             (this.$refs.rssArticleListRef.scrollTop = 0);
         });
       }
+    },
+    importUsedTxtRule(val) {
+      if (val) {
+        this.importBookInfo.tocUrl = val;
+      }
     }
   },
   mounted() {
@@ -1382,6 +1607,7 @@ export default {
   },
   activated() {
     document.title = "阅读";
+    this.scanCacheStorage();
   },
   methods: {
     init(refresh) {
@@ -1417,6 +1643,7 @@ export default {
       this.$prompt("请输入接口地址 ( 如：localhost:8080/reader3 )", "提示", {
         confirmButtonText: "确定",
         cancelButtonText: "取消",
+        inputValue: this.api,
         // inputPattern: /^((2[0-4]\d|25[0-5]|[1]?\d\d?)\.){3}(2[0-4]\d|25[0-5]|[1]?\d\d?):([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-6][0-5][0-5][0-3][0-5])$/,
         // inputErrorMessage: "url 形式不正确",
         beforeClose: (action, instance, done) => {
@@ -1557,14 +1784,6 @@ export default {
         this.$message.error("后端未连接");
         return;
       }
-      if (page) {
-        this.searchPage = page;
-      }
-      page = this.searchPage;
-      if (page === 1) {
-        // 重新搜索
-        this.searchLastIndex = -1;
-      }
       if (!this.search) {
         this.$message.error("请输入关键词进行搜索");
         return;
@@ -1573,13 +1792,22 @@ export default {
         this.searchConfig.searchType === "single" &&
         !this.searchConfig.bookSourceUrl
       ) {
+        this.$message.error("请选择书源进行搜索");
         return;
       }
-      if (this.loadingMore) {
-        return;
+      if (page) {
+        this.searchPage = page;
+      }
+      page = this.searchPage;
+      if (page === 1) {
+        // 重新搜索
+        this.searchLastIndex = -1;
       }
       if (this.searchConfig.searchType === "multi" && window.EventSource) {
         this.searchBookByEventStream(page);
+        return;
+      }
+      if (this.loadingMore) {
         return;
       }
       this.isSearchResult = true;
@@ -1635,6 +1863,28 @@ export default {
       );
     },
     searchBookByEventStream(page) {
+      const tryClose = () => {
+        try {
+          if (
+            this.searchEventSource &&
+            this.searchEventSource.readyState != this.searchEventSource.CLOSED
+          ) {
+            this.searchEventSource.close();
+          }
+          this.searchEventSource = null;
+        } catch (error) {
+          //
+        }
+      };
+      if (this.loadingMore) {
+        tryClose();
+        this.loadingMore = false;
+        // page === 1 是重新搜索
+        if (page !== 1) {
+          // 停止搜索
+          return;
+        }
+      }
       const params = {
         accessToken: this.$store.state.token,
         key: this.search,
@@ -1652,12 +1902,15 @@ export default {
         this.searchResult = [];
       }
       const url = buildURL(this.api + "/searchBookMultiSSE", params);
+
+      tryClose();
+
       this.searchEventSource = new EventSource(url, {
         withCredentials: true
       });
       this.searchEventSource.addEventListener("error", e => {
         this.loadingMore = false;
-        this.searchEventSource.close();
+        tryClose();
         try {
           if (e.data) {
             const result = JSON.parse(e.data);
@@ -1672,7 +1925,7 @@ export default {
       let oldSearchResultLength = this.searchResult.length;
       this.searchEventSource.addEventListener("end", e => {
         this.loadingMore = false;
-        this.searchEventSource.close();
+        tryClose();
         try {
           if (e.data) {
             const result = JSON.parse(e.data);
@@ -1722,7 +1975,7 @@ export default {
         bookUrl: book.bookUrl,
         index: book.index ?? book.durChapterIndex ?? 0,
         type: book.type,
-        coverUrl: book.coverUrl,
+        coverUrl: this.getBookCoverUrl(book),
         author: book.author,
         origin: book.origin
       });
@@ -1749,7 +2002,12 @@ export default {
                 ? "修改书籍成功"
                 : "加入书架成功"
             );
-            this.loadBookshelf();
+            if (!isEdit) {
+              this.loadBookshelf();
+            } else {
+              this.$store.commit("updateShelfBook", res.data.data);
+            }
+            return res.data.data;
           }
         },
         error => {
@@ -1844,6 +2102,19 @@ export default {
             this.$message.error("书籍信息必须是JSON格式");
           }
         }
+      );
+    },
+    currentDateTime() {
+      const now = new Date();
+      const pad = a => (a < 10 ? "0" + a : a);
+      return (
+        now.getFullYear() +
+        pad(now.getMonth() + 1) +
+        pad(now.getDate()) +
+        "_" +
+        pad(now.getHours()) +
+        pad(now.getMinutes()) +
+        pad(now.getSeconds())
       );
     },
     dateFormat(t) {
@@ -2007,9 +2278,26 @@ export default {
       );
     },
     handleCheckAllChange(val) {
+      let hasFilterd = false;
       this.checkedSourceIndex = val
-        ? this.importSourceList.map((v, i) => i)
+        ? this.importSourceList
+            .map((v, i) => {
+              // 不勾选使用了 js，webview的书源
+              const source = JSON.stringify(v);
+              if (
+                source.indexOf("@js:") !== -1 ||
+                source.indexOf("webView:") !== -1
+              ) {
+                hasFilterd = true;
+                return false;
+              }
+              return i;
+            })
+            .filter(v => v)
         : [];
+      if (val && hasFilterd) {
+        this.$message.info("部分使用了Javascript和Webview的书源未勾选");
+      }
       this.isIndeterminate = false;
     },
     handleCheckedSourcesChange(value) {
@@ -2017,6 +2305,19 @@ export default {
       this.checkAll = checkedCount === this.importSourceList.length;
       this.isIndeterminate =
         checkedCount > 0 && checkedCount < this.importSourceList.length;
+    },
+    getSourceTag(source) {
+      const sourceStr = JSON.stringify(source);
+      const tags = [];
+      if (sourceStr.indexOf("@js:") !== -1) {
+        tags.push("@Javascript");
+      }
+
+      if (sourceStr.indexOf("webView:") !== -1) {
+        tags.push("@WebView");
+      }
+
+      return "   " + tags.join("  ");
     },
     saveSourceList() {
       if (!this.$store.state.connected) {
@@ -2048,6 +2349,7 @@ export default {
             }
             this.showImportSourceDialog = false;
             this.isImportRssSource = false;
+            this.checkedSourceIndex = [];
           }
         },
         error => {
@@ -2340,6 +2642,25 @@ export default {
         }
       );
     },
+    toggleUserLocalStore(user, enableLocalStore) {
+      Axios.post(this.api + "/updateUser", {
+        username: user.username,
+        enableLocalStore
+      }).then(
+        res => {
+          if (res.data.isSuccess) {
+            this.$message.success("修改成功");
+            this.userList = res.data.data.map(v => ({
+              ...v,
+              userNS: v.username
+            }));
+          }
+        },
+        error => {
+          this.$message.error("修改失败 " + (error && error.toString()));
+        }
+      );
+    },
     formatTableField(row, column, cellValue) {
       switch (column.property) {
         case "createdAt":
@@ -2602,6 +2923,15 @@ export default {
       this.$refs.bookRef.value = null;
     },
     async importMultiBooks(books) {
+      if (!books || !books.length) {
+        return;
+      }
+      if (books.length == 1) {
+        this.importBookInfo = books[0].book;
+        this.importBookChapters = books[0].chapters;
+        this.showImportBookDialog = true;
+        return;
+      }
       const res = await this.$confirm(
         `你选择导入多本书籍，请选择导入方式?`,
         "提示",
@@ -2610,11 +2940,15 @@ export default {
           cancelButtonText: "逐一确认导入",
           type: "warning",
           closeOnClickModal: false,
-          closeOnPressEscape: false
+          closeOnPressEscape: false,
+          distinguishCancelAndClose: true
         }
-      ).catch(() => {
-        return false;
+      ).catch(action => {
+        return action === "close" ? "close" : false;
       });
+      if (res === "close") {
+        return;
+      }
       if (res) {
         for (let i = 0; i < books.length; i++) {
           const book = books[i];
@@ -2641,6 +2975,7 @@ export default {
       const url = this.importBookInfo.bookUrl;
       this.importBookInfo = {};
       this.importBookChapters = [];
+      this.importUsedTxtRule = "";
       this.$nextTick(() => {
         this.$emit("importEnd");
       });
@@ -2846,6 +3181,27 @@ export default {
         }
       );
     },
+    refreshLocalBook(book) {
+      Axios.post(this.api + "/refreshLocalBook", {
+        bookUrl: book.bookUrl
+      }).then(
+        res => {
+          if (res.data.isSuccess) {
+            this.$message.success("更新成功");
+            this.showBookInfo = res.data.data;
+            this.$store.commit("updateShelfBook", res.data.data);
+          }
+        },
+        error => {
+          this.$message.error("更新失败" + (error && error.toString()));
+        }
+      );
+    },
+    toggleBookCanUpdate(book) {
+      this.saveBook(book, false, true).then(res => {
+        this.showBookInfo = res;
+      });
+    },
     loadRssSources(refresh) {
       return cacheFirstRequest(
         () =>
@@ -2982,6 +3338,50 @@ export default {
           this.$store.commit("setPreviewImgList", imgUrlList);
         }
       }
+    },
+    exportBookSource() {
+      Axios.get(this.api + "/getSources").then(
+        res => {
+          if (res.data.isSuccess) {
+            const aEle = document.createElement("a");
+            const blob = new Blob([
+              JSON.stringify(res.data.data || [], null, 4)
+            ]);
+
+            aEle.download = "reader书源-" + this.currentDateTime() + ".json";
+            aEle.href = URL.createObjectURL(blob);
+            aEle.click();
+          }
+        },
+        error => {
+          this.$message.error("导出书源失败 " + (error && error.toString()));
+        }
+      );
+    },
+    async deleteAllBookSource() {
+      const res = await this.$confirm(`确认要清空所有书源吗?`, "提示", {
+        confirmButtonText: "确定",
+        cancelButtonText: "取消",
+        type: "warning"
+      }).catch(() => {
+        return false;
+      });
+      if (!res) {
+        return;
+      }
+      Axios.post(this.api + "/deleteAllSources").then(
+        res => {
+          if (res.data.isSuccess) {
+            //
+            this.loadBookSource(true);
+            this.$message.success("清空书源成功");
+            this.loadBookSource(true);
+          }
+        },
+        error => {
+          this.$message.error("清空书源失败 " + (error && error.toString()));
+        }
+      );
     },
     editBookSource(bookSource) {
       const editHandler = data => {
@@ -3158,53 +3558,131 @@ export default {
           });
       }
     },
-    analyseLocalStorage() {
-      try {
-        let totalBytes = 0;
-        let cacheBytes = 0;
-        for (const key in window.localStorage) {
-          if (Object.hasOwnProperty.call(window.localStorage, key)) {
-            const data = window.localStorage[key];
-            totalBytes += data.getBytesLength();
-            if (key.startsWith("localCache@")) {
-              cacheBytes += data.getBytesLength();
-            }
-          }
-        }
-        return {
-          totalBytes: formatSize(totalBytes),
-          cacheBytes: formatSize(cacheBytes)
-        };
-      } catch (e) {
-        //
-      }
+    async scanCacheStorage() {
+      this.localCacheStats = {
+        total: (await this.analyseLocalStorage()).totalBytes,
+        bookSourceList: (await this.analyseLocalStorage("bookSourceList"))
+          .totalBytes,
+        rssSources: (await this.analyseLocalStorage("rssSources")).totalBytes,
+        chapterList: (await this.analyseLocalStorage("chapterList")).totalBytes,
+        chapterContent: (await this.analyseLocalStorage("chapterContent"))
+          .totalBytes
+      };
     },
-    clearCache() {
-      try {
-        let cacheBytes = 0;
-        for (const key in window.localStorage) {
-          if (Object.hasOwnProperty.call(window.localStorage, key)) {
-            const data = window.localStorage[key];
+    analyseLocalStorage(match) {
+      let totalBytes = 0;
+      let cacheBytes = 0;
+      return window.$cacheStorage
+        .iterate(function(value, key) {
+          if (!match || key.indexOf(match) >= 0) {
+            totalBytes += JSON.stringify(value).getBytesLength();
             if (key.startsWith("localCache@")) {
-              cacheBytes += data.getBytesLength();
-              window.localStorage.removeItem(key);
+              cacheBytes += JSON.stringify(value).getBytesLength();
             }
           }
-        }
-        return {
-          cacheBytes: formatSize(cacheBytes)
-        };
-      } catch (e) {
-        //
-      }
+        })
+        .then(() => {
+          return {
+            totalBytes: formatSize(totalBytes),
+            cacheBytes: formatSize(cacheBytes)
+          };
+        })
+        .catch(function() {
+          // 当出错时，此处代码运行
+          // console.log(err);
+        });
+    },
+    clearCache(match) {
+      let cacheBytes = 0;
+      window.$cacheStorage
+        .iterate(function(value, key) {
+          if (!match || key.indexOf(match) >= 0) {
+            if (key.startsWith("localCache@")) {
+              cacheBytes += JSON.stringify(value).getBytesLength();
+              window.$cacheStorage.removeItem(key);
+            }
+          }
+        })
+        .then(() => {
+          this.scanCacheStorage();
+
+          return {
+            cacheBytes: formatSize(cacheBytes)
+          };
+        })
+        .catch(function() {
+          // 当出错时，此处代码运行
+          // console.log(err);
+        });
     },
     scrollHandler() {
       this.lastScrollTop = this.$refs.bookList.scrollTop;
+    },
+    getBookCoverUrl(book) {
+      return book.customCoverUrl || book.coverUrl;
+    },
+    triggerBookCoverRefClick() {
+      this.$refs.bookCoverRef.dispatchEvent(new MouseEvent("click"));
+    },
+    onCoverFileChange(event) {
+      if (!event.target || !event.target.files || !event.target.files.length) {
+        return;
+      }
+      const rawFile = event.target.files && event.target.files[0];
+      // console.log("rawFile", rawFile);
+      let param = new FormData();
+      param.append("file", rawFile);
+      param.append("type", "covers");
+      Axios.post(this.api + "/uploadFile", param, {
+        headers: { "Content-Type": "multipart/form-data" }
+      }).then(
+        res => {
+          if (res.data.isSuccess) {
+            if (!res.data.data.length) {
+              this.$message.error("上传文件失败");
+              return;
+            }
+            this.showBookInfo.customCoverUrl = res.data.data[0];
+            this.saveBook(this.showBookInfo).then(res => {
+              this.showBookInfo = res;
+            });
+          }
+        },
+        error => {
+          this.$message.error("上传文件失败 " + (error && error.toString()));
+        }
+      );
+    },
+    logout() {
+      Axios.post(this.api + "/logout").then(
+        res => {
+          if (res.data.isSuccess) {
+            this.$store.commit("setToken", "");
+            window.location.reload(true);
+          }
+        },
+        error => {
+          this.$message.error("注销失败 " + (error && error.toString()));
+        }
+      );
+    },
+    getChapterListByRule() {
+      Axios.post("/getChapterListByRule", this.importBookInfo).then(
+        res => {
+          if (res.data.isSuccess && res.data.data.book) {
+            this.importBookInfo = res.data.data.book;
+            this.importBookChapters = res.data.data.chapters;
+          }
+        },
+        error => {
+          this.$message.error("注销失败 " + (error && error.toString()));
+        }
+      );
     }
   },
   computed: {
     config() {
-      return this.$store.state.config;
+      return this.$store.getters.config;
     },
     isNight() {
       return this.$store.getters.isNight;
@@ -3225,8 +3703,8 @@ export default {
     },
     bookCoverList() {
       return this.bookList
-        .filter(v => v.coverUrl)
-        .map(v => this.getCover(v.coverUrl, true));
+        .filter(v => this.getBookCoverUrl(v))
+        .map(v => this.getCover(this.getBookCoverUrl(v), true));
     },
     shelfBooks() {
       return this.$store.getters.shelfBooks;
@@ -3242,7 +3720,7 @@ export default {
     },
     connectStatus() {
       return this.$store.state.connected
-        ? `已连接` + this.api
+        ? `后端已连接`
         : this.connecting
         ? "正在连接后端服务器……"
         : "点击设置后端接口前缀";
@@ -3420,7 +3898,7 @@ export default {
     bookCoverBgStyle() {
       return {
         backgroundImage: `url(${this.getCover(
-          this.showBookInfo.coverUrl,
+          this.getBookCoverUrl(this.showBookInfo),
           true
         )})`
       };
@@ -3442,6 +3920,18 @@ export default {
       set(val) {
         this.$store.commit("setSearchConfig", val);
       }
+    },
+    isShowTocRule() {
+      try {
+        return (
+          this.importBookInfo &&
+          this.importBookInfo.originName &&
+          this.importBookInfo.originName.toLowerCase().endsWith(".txt")
+        );
+      } catch (e) {
+        // console.log(e);
+      }
+      return false;
     }
   }
 };
@@ -3536,6 +4026,15 @@ export default {
         font-size: 14px;
         color: #b1b1b1;
         font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, "Nimbus Sans L", Arial, "Liberation Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Source Han Sans SC", "Source Han Sans CN", "Microsoft YaHei", "Wenquanyi Micro Hei", "WenQuanYi Zen Hei", "ST Heiti", SimHei, "WenQuanYi Zen Hei Sharp", sans-serif;
+
+        .right-text {
+          float: right;
+          display: inline-block;
+          height: 20px;
+          line-height: 20px;
+          cursor: pointer;
+          user-select: none;
+        }
       }
 
       .no-point {
@@ -3896,21 +4395,57 @@ export default {
     flex-direction: row;
     overflow-x: auto;
     align-items: center;
-    justify-content: space-between;
 
-    span {
-      display: inline-block;
-      min-width: 56px;
-      text-align-last: justify;
+    .check-form-label {
+      min-width: 60px;
     }
+
     .el-input {
       width: auto;
       min-width: 100px;
       margin-right: 10px;
     }
+
     .el-input-number {
       min-width: 130px;
       margin-right: 10px;
+    }
+
+    .book-cover {
+      width: 84px;
+      height: 112px;
+
+      .cover {
+        width: 84px;
+        height: 112px;
+      }
+    }
+
+    .book-info {
+      display: flex;
+      flex-direction: column;
+      margin-left: 30px;
+      justify-content: space-between;
+      min-height: 100px;
+
+      .toc-refresh-btn {
+        margin-left: 5px;
+      }
+
+      span {
+        display: inline-block;
+        min-width: 56px;
+        text-align-last: justify;
+      }
+      .el-input {
+        width: auto;
+        min-width: 100px;
+        margin-right: 10px;
+      }
+      .el-input-number {
+        min-width: 130px;
+        margin-right: 10px;
+      }
     }
   }
 
@@ -3918,6 +4453,7 @@ export default {
     font-size: 15px;
     padding: 5px 0;
     font-weight: 600;
+    margin-top: 10px;
   }
 
   .chapter-list {

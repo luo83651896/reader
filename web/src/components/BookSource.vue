@@ -3,11 +3,29 @@
     <div class="title-zone">
       <div class="title">来源({{ bookSource.length }})</div>
       <div :class="{ 'title-btn': true, loading: loadingMore }">
+        <el-select
+          size="mini"
+          v-model="bookSourceGroup"
+          class="booksource-group-select"
+          filterable
+          placeholder="全部分组"
+        >
+          <el-option
+            v-for="(item, index) in $store.getters.bookSourceGroupList"
+            :key="'source-group-' + index"
+            :label="item.name + ' (' + item.count + ')'"
+            :value="item.value"
+          >
+          </el-option>
+        </el-select>
         <span :class="{ loading: loading }" @click="refresh">
           <i class="el-icon-loading" v-if="loading"></i>
           {{ loading ? "刷新中..." : "刷新" }}
         </span>
-        <span :class="{ loading: loadingMore }" @click="loadMoreSource">
+        <span
+          :class="{ loading: loadingMore }"
+          @click="searchBookSourceByEventStream"
+        >
           <i class="el-icon-loading" v-if="loadingMore"></i>
           {{ loadingMore ? "加载中..." : "加载更多" }}
         </span>
@@ -47,6 +65,7 @@
 <script>
 import jump from "../plugins/jump";
 import Axios from "../plugins/axios";
+const buildURL = require("axios/lib/helpers/buildURL");
 
 export default {
   name: "BookSource",
@@ -54,15 +73,16 @@ export default {
     return {
       index: this.$store.state.readingBook.index,
       bookSource: [],
+      bookSourceGroup: "",
+      bookSourceGroupIndexMap: {},
       loading: false,
-      loadingMore: false,
-      lastIndex: 0
+      loadingMore: false
     };
   },
   props: ["visible"],
   computed: {
     theme() {
-      return this.$store.state.config.theme;
+      return this.$store.getters.config.theme;
     },
     popupTheme() {
       return {
@@ -100,10 +120,13 @@ export default {
           if (res.data.isSuccess) {
             this.bookSource = res.data.data || [];
             if (this.bookSource.length) {
-              this.lastIndex = Math.max(this.lastIndex, this.bookSource.length);
+              this.bookSourceGroupIndexMap[""] = Math.max(
+                this.bookSourceGroupIndexMap[""] ?? 0,
+                this.bookSource.length
+              );
               this.jumpToActive();
             } else {
-              this.loadMoreSource();
+              // this.loadMoreSource();
             }
           }
         },
@@ -168,7 +191,8 @@ export default {
       Axios.get(this.api + `/searchBookSource`, {
         params: {
           url: this.$store.state.readingBook.bookUrl,
-          lastIndex: this.lastIndex
+          bookSourceGroup: this.bookSourceGroup,
+          lastIndex: this.bookSourceGroupIndexMap[this.bookSourceGroup]
         }
       }).then(
         res => {
@@ -182,7 +206,8 @@ export default {
               })
             );
             if (res.data.data.lastIndex) {
-              this.lastIndex = res.data.data.lastIndex;
+              this.bookSourceGroupIndexMap[this.bookSourceGroup] =
+                res.data.data.lastIndex;
             }
           }
         },
@@ -194,6 +219,96 @@ export default {
           throw error;
         }
       );
+    },
+    searchBookSourceByEventStream() {
+      const tryClose = () => {
+        try {
+          if (
+            this.searchEventSource &&
+            this.searchEventSource.readyState != this.searchEventSource.CLOSED
+          ) {
+            this.searchEventSource.close();
+          }
+          this.searchEventSource = null;
+        } catch (error) {
+          //
+        }
+      };
+      if (this.loadingMore) {
+        tryClose();
+        this.loadingMore = false;
+        return;
+      }
+      const params = {
+        accessToken: this.$store.state.token,
+        concurrentCount: this.$store.state.searchConfig.concurrentCount,
+        url: this.$store.state.readingBook.bookUrl,
+        bookSourceGroup: this.bookSourceGroup,
+        lastIndex: this.bookSourceGroupIndexMap[this.bookSourceGroup]
+      };
+      this.loadingMore = true;
+
+      const url = buildURL(this.api + "/searchBookSourceSSE", params);
+
+      tryClose();
+
+      this.searchEventSource = new EventSource(url, {
+        withCredentials: true
+      });
+      this.searchEventSource.addEventListener("error", e => {
+        this.loadingMore = false;
+        tryClose();
+        try {
+          if (e.data) {
+            const result = JSON.parse(e.data);
+            if (result && result.errorMsg) {
+              this.$message.error(result.errorMsg);
+            }
+          }
+        } catch (error) {
+          //
+        }
+      });
+      let oldBookSourceLength = this.bookSource.length;
+      this.searchEventSource.addEventListener("end", e => {
+        this.loadingMore = false;
+        tryClose();
+        try {
+          if (e.data) {
+            const result = JSON.parse(e.data);
+            if (result && result.lastIndex) {
+              this.bookSourceGroupIndexMap[this.bookSourceGroup] =
+                result.lastIndex;
+            }
+          }
+          if (this.bookSource.length === oldBookSourceLength) {
+            this.$message.error("没有更多啦");
+          }
+        } catch (error) {
+          //
+        }
+      });
+      this.searchEventSource.addEventListener("message", e => {
+        try {
+          if (e.data) {
+            const result = JSON.parse(e.data);
+            if (result && result.lastIndex) {
+              this.bookSourceGroupIndexMap[this.bookSourceGroup] =
+                result.lastIndex;
+            }
+            if (result.data) {
+              this.bookSource = [].concat(
+                this.bookSource,
+                result.data.filter(v => {
+                  return !this.bookSourceMap[v.bookUrl];
+                })
+              );
+            }
+          }
+        } catch (error) {
+          //
+        }
+      });
     },
     jumpToActive() {
       this.$nextTick(() => {
@@ -249,6 +364,10 @@ export default {
     line-height: 26px;
     color: #ed4259;
     cursor: pointer;
+
+    .booksource-group-select {
+      width: 140px;
+    }
     .source-count {
       display: inline-block;
       color: #606266;

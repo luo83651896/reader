@@ -23,7 +23,7 @@ const settings = {
   },
   searchConfig: {
     searchType: "multi",
-    bookSourceGroup: "全部分组",
+    bookSourceGroup: "",
     bookSourceUrl: "",
     concurrentCount: 24
   },
@@ -35,12 +35,15 @@ const settings = {
     themeType: "day",
     readMethod: "上下滑动",
     clickMethod: "自动",
+    animateMSTime: 300, // 翻页动画时长
     readWidth: 800,
     lineHeight: 1.8, // 行高
     paragraphSpace: 0.2, // 段间距
     autoTheme: true, // 自动切换主题
     selectionAction: "过滤弹窗",
-    pageMode: "自适应"
+    pageMode: "自适应",
+    pageType: "正常",
+    autoReadingLineTime: 1000
   },
   speechVoiceConfig: {
     voiceName: "",
@@ -83,6 +86,11 @@ const settings = {
       body: "url(" + body_6 + ") repeat",
       content: "url(" + content_6 + ") repeat",
       popup: "#121212"
+    },
+    {
+      body: "#f7f7f7 repeat",
+      content: "#fff repeat",
+      popup: "#f7f7f7 repeat"
     }
   ],
   fonts: [
@@ -117,7 +125,9 @@ const settings = {
       // fontFamily: "STFangsong",
       // "-fx-font-family": "STFangsong"
     }
-  ]
+  ],
+  maxReadWidth: Math.floor(window.innerWidth / 160) * 160,
+  minReadWidth: Math.min(Math.floor(window.innerWidth / 160), 4) * 160
 };
 export const errorTypeList = [
   "UnknownHostException",

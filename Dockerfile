@@ -5,12 +5,12 @@ WORKDIR /app/web
 RUN yarn && yarn build
 
 # Build jar
-FROM gradle:5.2.1-jdk8-alpine AS build-env
+FROM gradle:6.1.1-jdk8 AS build-env
 ADD --chown=gradle:gradle . /app
 WORKDIR /app
 COPY --from=build-web /app/web/dist /app/src/main/resources/web
 RUN \
-    rm src/main/java/org/lightink/reader/ReaderUIApplication.kt; \
+    rm src/main/java/com/htmake/reader/ReaderUIApplication.kt; \
     gradle -b cli.gradle assemble --info;
 
 FROM openjdk:8-jdk-alpine
@@ -34,5 +34,5 @@ ENV TZ=Asia/Shanghai
 EXPOSE 8080
 ENTRYPOINT ["/sbin/tini", "--"]
 # COPY --from=hengyunabc/arthas:latest /opt/arthas /opt/arthas
-COPY --from=build-env /app/build/libs/app-1.8.0.jar /app/bin/reader.jar
+COPY --from=build-env /app/build/libs/app-2.0.0.jar /app/bin/reader.jar
 CMD ["java", "-jar", "/app/bin/reader.jar" ]

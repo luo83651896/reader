@@ -56,7 +56,8 @@ export default new Vuex.Store({
     showImageViewer: false,
     previewImageIndex: 0,
     previewImgList: [],
-    searchConfig: { ...settings.searchConfig }
+    searchConfig: { ...settings.searchConfig },
+    txtTocRules: []
   },
   mutations: {
     setShelfBooks(state, books) {
@@ -66,6 +67,9 @@ export default new Vuex.Store({
           author: v.author,
           bookUrl: v.bookUrl,
           coverUrl: v.coverUrl,
+          charset: v.charset,
+          customCoverUrl: v.customCoverUrl,
+          canUpdate: v.canUpdate,
           durChapterIndex: v.durChapterIndex,
           durChapterPos: v.durChapterPos,
           durChapterTime: v.durChapterTime,
@@ -92,6 +96,13 @@ export default new Vuex.Store({
             author: book.author || state.shelfBooks[index].author,
             bookUrl: book.bookUrl || state.shelfBooks[index].bookUrl,
             coverUrl: book.coverUrl || state.shelfBooks[index].coverUrl,
+            charset: book.charset || state.shelfBooks[index].charset,
+            customCoverUrl:
+              book.customCoverUrl || state.shelfBooks[index].customCoverUrl,
+            canUpdate:
+              typeof book.canUpdate === "undefined"
+                ? state.shelfBooks[index].canUpdate
+                : book.canUpdate,
             durChapterIndex:
               book.durChapterIndex || state.shelfBooks[index].durChapterIndex,
             durChapterPos:
@@ -244,6 +255,9 @@ export default new Vuex.Store({
     },
     setNightTheme(state, isNight) {
       let config = { ...state.config };
+      if (config.theme !== "custom") {
+        config.theme = parseInt(config.theme);
+      }
       if (isNight) {
         if (
           config.theme !== settings.defaultNightTheme &&
@@ -270,6 +284,9 @@ export default new Vuex.Store({
           0;
         config.themeType = "day";
         config.theme = lastDayTheme;
+      }
+      if (config.theme !== "custom") {
+        config.theme = parseInt(config.theme);
       }
       state.config = config;
       window.localStorage &&
@@ -356,6 +373,9 @@ export default new Vuex.Store({
           "searchConfig",
           JSON.stringify(searchConfig)
         );
+    },
+    setTxtTocRules(state, tocRules) {
+      state.txtTocRules = [].concat(tocRules);
     }
   },
   getters: {
@@ -381,6 +401,12 @@ export default new Vuex.Store({
     isNight: state => {
       return state.config.themeType === "night";
     },
+    isKindlePage: state => {
+      return state.config.pageType === "Kindle";
+    },
+    isNormalPage: state => {
+      return state.config.pageType === "正常";
+    },
     currentContentBGImg: (state, getters) => {
       if (state.config.contentBGImg) {
         return state.config.contentBGImg.startsWith("bg/") ||
@@ -405,13 +431,13 @@ export default new Vuex.Store({
       if (state.config.theme === "custom") {
         return {
           body:
-            (state.miniInterface
+            (state.miniInterface && state.config.isNormalPage
               ? "linear-gradient(to bottom,rgba(0,0,0,.2) 0,transparent 56px), "
               : "") + (state.config.bodyColor || "#eadfca"),
           content: {
             backgroundImage: getters.currentContentBGImg
               ? `${
-                  state.miniInterface
+                  state.miniInterface && state.config.isNormalPage
                     ? "linear-gradient(to bottom,rgba(0,0,0,.2) 0,transparent 56px), "
                     : ""
                 }url(${getters.currentContentBGImg})`
@@ -424,7 +450,7 @@ export default new Vuex.Store({
           },
           popupPure: state.config.popupColor || "#ede7da",
           popup:
-            (state.miniInterface
+            (state.miniInterface && state.config.isNormalPage
               ? "linear-gradient(to bottom,rgba(0,0,0,.2) 0,transparent 36px), "
               : "") + (state.config.popupColor || "#ede7da")
         };
@@ -433,7 +459,7 @@ export default new Vuex.Store({
           ...settings.themes[state.config.theme]
         };
         config.popupPure = config.popup;
-        if (state.miniInterface) {
+        if (state.miniInterface && state.config.isNormalPage) {
           config.body =
             "linear-gradient(to bottom,rgba(0,0,0,.2) 0,transparent 36px), " +
             config.body;
@@ -454,11 +480,39 @@ export default new Vuex.Store({
         return y - x;
       });
     },
+    bookSourceGroupList: state => {
+      const groupsMap = {};
+      state.bookSourceList.forEach(v => {
+        if (v.bookSourceGroup) {
+          groupsMap[v.bookSourceGroup] = (groupsMap[v.bookSourceGroup] | 0) + 1;
+        }
+      });
+      const groups = [
+        {
+          name: "全部分组",
+          value: "",
+          count: state.bookSourceList.length
+        }
+      ];
+      for (const i in groupsMap) {
+        if (Object.hasOwnProperty.call(groupsMap, i)) {
+          groups.push({
+            name: i,
+            value: i,
+            count: groupsMap[i]
+          });
+        }
+      }
+      return groups;
+    },
     builtInBookGroupMap: () => {
       return builtInBookGroup.reduce((c, v) => {
         c[v.groupId] = v.groupName;
         return c;
       }, {});
+    },
+    config: state => {
+      return state.config;
     }
   },
   actions: {

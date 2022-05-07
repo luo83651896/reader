@@ -2,11 +2,20 @@
 
 oldJAVAHome=$JAVA_HOME
 
-export JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home
+if [ -d /Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home ]; then
+    export JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home
+fi
+
+javaVersion=$(java -version 2>&1 | sed -n ';s/.* version "\(.*\)\.\(.*\)\..*".*/\1\2/p;')
+
+if [[ "$javaVersion" -lt "110" ]]; then
+    echo "Java version must not lower than 11.0"
+    exit 1
+fi
 
 task=$1
 
-version="1.8.0"
+version="2.0.0"
 
 getVersion()
 {
@@ -51,24 +60,24 @@ case $task in
         if [[ -z "$port" ]]; then
             port=8080
         fi
-        mv src/main/java/org/lightink/reader/ReaderUIApplication.kt src/main/java/org/lightink/reader/ReaderUIApplication.kt.back
+        mv src/main/java/com/htmake/reader/ReaderUIApplication.kt src/main/java/com/htmake/reader/ReaderUIApplication.kt.back
         getVersion ./cli.gradle
         ./gradlew -b cli.gradle assemble --info
         if test $? -eq 0; then
-            mv src/main/java/org/lightink/reader/ReaderUIApplication.kt.back src/main/java/org/lightink/reader/ReaderUIApplication.kt
+            mv src/main/java/com/htmake/reader/ReaderUIApplication.kt.back src/main/java/com/htmake/reader/ReaderUIApplication.kt
             java -jar build/libs/reader-$version.jar --reader.server.port=$port
         else
-            mv src/main/java/org/lightink/reader/ReaderUIApplication.kt.back src/main/java/org/lightink/reader/ReaderUIApplication.kt
+            mv src/main/java/com/htmake/reader/ReaderUIApplication.kt.back src/main/java/com/htmake/reader/ReaderUIApplication.kt
         fi
     ;;
     cli)
         # 服务端打包命令
         shift
         export JAVA_HOME=$oldJAVAHome
-        mv src/main/java/org/lightink/reader/ReaderUIApplication.kt src/main/java/org/lightink/reader/ReaderUIApplication.kt.back
+        mv src/main/java/com/htmake/reader/ReaderUIApplication.kt src/main/java/com/htmake/reader/ReaderUIApplication.kt.back
         getVersion ./cli.gradle
         ./gradlew -b cli.gradle $@
-        mv src/main/java/org/lightink/reader/ReaderUIApplication.kt.back src/main/java/org/lightink/reader/ReaderUIApplication.kt
+        mv src/main/java/com/htmake/reader/ReaderUIApplication.kt.back src/main/java/com/htmake/reader/ReaderUIApplication.kt
     ;;
     yarn)
         # yarn 快捷命令，默认 install

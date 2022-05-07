@@ -71,7 +71,11 @@ import { CodeJar } from "codejar";
 import Prism from "prismjs";
 import "prismjs/components/prism-json";
 import "prismjs/themes/prism.css";
-import { isMiniInterface, networkFirstRequest } from "./plugins/helper";
+import {
+  cacheFirstRequest,
+  isMiniInterface,
+  networkFirstRequest
+} from "./plugins/helper";
 
 Date.prototype.format = function(fmt) {
   var o = {
@@ -169,7 +173,10 @@ export default {
       this.$store.commit("setApi", api);
     }
 
-    if (window.navigator.userAgent.indexOf("iPhone") >= 0) {
+    if (
+      window.navigator.userAgent.indexOf("iPhone") >= 0 ||
+      window.navigator.userAgent.indexOf("iPad") >= 0
+    ) {
       document.documentElement.style.setProperty("height", "100vh");
       document.body.style.setProperty("height", "100vh");
     }
@@ -205,10 +212,12 @@ export default {
     this.autoSetTheme(this.autoTheme);
 
     this.getUserInfo();
+    this.loadTxtTocRules();
   },
   beforeMount() {
     this.setTheme(this.isNight);
     this.setMiniInterfaceClass();
+    this.setPageTypeClass();
     this.eventBus = eventBus;
     eventBus.$on("showEditor", this.showEditorListener);
   },
@@ -224,10 +233,7 @@ export default {
       return this.$store.getters.isNight;
     },
     autoTheme() {
-      return this.$store.state.config.autoTheme;
-    },
-    miniInterface() {
-      return this.$store.state.config.miniInterface;
+      return this.$store.getters.config.autoTheme;
     },
     dialogWidth() {
       return this.$store.state.miniInterface ? "85%" : "450px";
@@ -270,6 +276,9 @@ export default {
             window.customCSSLoad = true;
           });
       }
+    },
+    "$store.state.config.pageType": function() {
+      this.setPageTypeClass();
     }
   },
   methods: {
@@ -304,6 +313,18 @@ export default {
       } else {
         document.body.className = (document.body.className || "").replace(
           "mini-interface",
+          ""
+        );
+      }
+    },
+    setPageTypeClass() {
+      if (this.$store.getters.isKindlePage) {
+        document.body.className =
+          (document.body.className || "").replace("kindle-page", "") +
+          " kindle-page";
+      } else {
+        document.body.className = (document.body.className || "").replace(
+          "kindle-page",
           ""
         );
       }
@@ -349,6 +370,19 @@ export default {
         error => {
           this.$message.error(
             "加载用户信息失败 " + (error && error.toString())
+          );
+        }
+      );
+    },
+    loadTxtTocRules() {
+      cacheFirstRequest(() => Axios.get("/getTxtTocRules"), "txtTocRules").then(
+        res => {
+          const data = res.data.data || [];
+          this.$store.commit("setTxtTocRules", data);
+        },
+        error => {
+          this.$message.error(
+            "加载txt章节规则失败 " + (error && error.toString())
           );
         }
       );
@@ -545,6 +579,11 @@ export default {
     border: 1px solid #444 !important;
     color: #ddd;
   }
+  .el-textarea__inner {
+    background-color: #444;
+    border: 1px solid #444 !important;
+    color: #ddd;
+  }
   .el-select-dropdown {
     background-color: #333;
     border: 1px solid #333 !important;
@@ -609,5 +648,9 @@ export default {
 .popper-component.el-popover {
   border: none;
   box-shadow: none;
+}
+.kindle-page {
+  -webkit-tap-highlight-color: rbga(255, 255, 255, 0);
+  -webkit-user-select: none;
 }
 </style>

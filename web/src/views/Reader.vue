@@ -129,6 +129,21 @@
     </div>
     <div class="read-bar" :style="rightBarTheme">
       <div
+        class="refresh-item"
+        :style="popupAbsoluteBtnStyle"
+        @click="refreshContent"
+      >
+        <i class="el-icon-refresh-right"></i>
+      </div>
+      <div
+        class="auto-reading-item"
+        :style="popupAbsoluteBtnStyle"
+        @click="toggleAutoReading()"
+        v-if="!isEpub && !isCarToon && !isAudio"
+      >
+        <i class="el-icon-view"></i>
+      </div>
+      <div
         class="headset-item"
         :style="popupAbsoluteBtnStyle"
         @click="showReadBar = !showReadBar"
@@ -158,6 +173,9 @@
         <span class="progress-tip">{{ formatProgressTip() }}</span>
       </div>
       <div class="cache-content-zone" v-if="showCacheContentZone">
+        <div>
+          缓存章节
+        </div>
         <div
           class="cache-content-btn"
           v-show="!isCachingContent"
@@ -354,7 +372,7 @@
         <span
           class="bottom-btn"
           v-if="show && !isSlideRead && !error"
-          @click="toNextChapter"
+          @click="toNextChapter()"
           >加载下一章</span
         >
       </div>
@@ -434,6 +452,7 @@ export default {
     this.$Lazyload.$on("loaded", this.lazyloadHandler);
   },
   deactivated() {
+    this.saveBookProgress();
     this.startSavePosition = false;
     this.lastReadingBook = this.$store.state.readingBook;
     this.timer && clearInterval(this.timer);
@@ -510,6 +529,30 @@ export default {
         this.startSavePosition = false;
         this.autoShowPosition();
       }
+    },
+    currentPage(val, oldVal) {
+      // 还剩两页的时候，预读下一章节
+      if (val !== oldVal && val >= this.totalPages - 2) {
+        if (
+          this.$store.state.readingBook.index <
+          this.$store.state.readingBook.catalog.length - 1
+        ) {
+          if (!this.preCaching) {
+            this.preCaching = true;
+            this.getBookContent(
+              this.$store.state.readingBook.index + 1,
+              {
+                timeout: 30000,
+                silent: true
+              },
+              false,
+              true
+            ).then(() => {
+              this.preCaching = false;
+            });
+          }
+        }
+      }
     }
   },
   data() {
@@ -546,7 +589,9 @@ export default {
 
       showCacheContentZone: false,
       isCachingContent: false,
-      cachingContentTip: ""
+      cachingContentTip: "",
+
+      autoReading: false
     };
   },
   computed: {
@@ -563,10 +608,13 @@ export default {
       return this.$store.state.windowSize;
     },
     config() {
-      return this.$store.state.config;
+      return this.$store.getters.config;
     },
     theme() {
       return this.config.theme;
+    },
+    animateMSTime() {
+      return this.config.animateMSTime;
     },
     isNight() {
       return this.$store.getters.isNight;
@@ -577,7 +625,11 @@ export default {
       };
     },
     isSlideRead() {
-      return this.showReadBar || this.isEpub || this.isCarToon || this.isAudio
+      return this.autoReading ||
+        this.showReadBar ||
+        this.isEpub ||
+        this.isCarToon ||
+        this.isAudio
         ? false
         : this.$store.getters.isSlideRead;
     },
@@ -653,7 +705,7 @@ export default {
       }
     },
     readWidthConfig() {
-      var width = this.$store.state.config.readWidth;
+      var width = this.$store.getters.config.readWidth;
       while (width > this.$store.state.windowSize.width - 140) {
         width -= 20;
       }
@@ -836,11 +888,11 @@ export default {
     scrollOffset() {
       // 两行 + 两个段间距
       return (
-        this.$store.state.config.fontSize *
-          this.$store.state.config.lineHeight *
+        this.$store.getters.config.fontSize *
+          this.$store.getters.config.lineHeight *
           2 +
-        this.$store.state.config.fontSize *
-          this.$store.state.config.paragraphSpace *
+        this.$store.getters.config.fontSize *
+          this.$store.getters.config.paragraphSpace *
           2
       );
     }
@@ -957,7 +1009,7 @@ export default {
     refreshCatalog() {
       return this.loadCatalog(true);
     },
-    async getBookContent(chapterIndex, options) {
+    async getBookContent(chapterIndex, options, refresh, cache) {
       return cacheFirstRequest(
         () =>
           Axios.get(
@@ -965,7 +1017,9 @@ export default {
               "/getBookContent?url=" +
               encodeURIComponent(this.$store.state.readingBook.bookUrl) +
               "&index=" +
-              chapterIndex,
+              chapterIndex +
+              (refresh ? "&refresh=1" : "") +
+              (cache ? "&cache=1" : ""),
             {
               timeout: 30000,
               ...options
@@ -977,17 +1031,21 @@ export default {
           "@" +
           this.$store.state.readingBook.bookUrl +
           "@chapterContent-" +
-          chapterIndex
+          chapterIndex,
+        refresh
       );
     },
-    getContent(index) {
+    refreshContent() {
+      this.getContent(this.$store.state.readingBook.index, true);
+    },
+    getContent(index, refresh) {
       //展示进度条
       this.show = false;
       if (!this.loading || !this.loading.visible) {
         this.loading = this.$loading({
           target: this.$refs.content,
           lock: true,
-          text: "正在获取内容",
+          text: refresh ? "正在刷新内容" : "正在获取内容",
           spinner: "el-icon-loading",
           background: "rgba(0,0,0,0)"
         });
@@ -1022,7 +1080,8 @@ export default {
       let chapterName = this.$store.state.readingBook.catalog[index].title;
       let chapterIndex = this.$store.state.readingBook.catalog[index].index;
       this.title = chapterName;
-      this.getBookContent(chapterIndex).then(
+      const now = new Date().getTime();
+      this.getBookContent(chapterIndex, {}, refresh).then(
         res => {
           if (
             bookUrl !== this.$store.state.readingBook.bookUrl ||
@@ -1030,6 +1089,10 @@ export default {
           ) {
             // 已经换书或者换章节了
             return;
+          }
+          if (now + 100 > new Date().getTime()) {
+            // 不超过 100ms 假定为获取缓存，此时发送进度保存请求
+            this.saveBookProgress();
           }
           if (res.data.isSuccess) {
             let data = res.data.data;
@@ -1065,6 +1128,18 @@ export default {
           throw error;
         }
       );
+    },
+    saveBookProgress() {
+      return Axios.post(
+        this.api + "/saveBookProgress",
+        {
+          url: this.$store.state.readingBook.bookUrl,
+          index: this.chapterIndex
+        },
+        {
+          silent: true
+        }
+      ).catch(() => {});
     },
     toTop() {
       if (this.$store.state.miniInterface) {
@@ -1161,7 +1236,7 @@ export default {
             typeof moveX === "undefined"
               ? -(this.windowSize.width - 16)
               : moveX,
-            300
+            this.animateMSTime
           );
         } else {
           this.toNextChapter(() => {
@@ -1180,7 +1255,7 @@ export default {
           this.currentPage += 1;
           const moveY = this.windowSize.height - this.scrollOffset;
           this.transforming = true;
-          this.scrollContent(moveY, 300);
+          this.scrollContent(moveY, this.animateMSTime);
         } else {
           this.currentPage = 1;
           this.toNextChapter();
@@ -1204,7 +1279,7 @@ export default {
           this.transforming = true;
           this.transform(
             typeof moveX === "undefined" ? this.windowSize.width - 16 : moveX,
-            300
+            this.animateMSTime
           );
         } else {
           this.showLastPage = true;
@@ -1222,7 +1297,7 @@ export default {
           this.currentPage -= 1;
           const moveY = -this.windowSize.height + this.scrollOffset;
           this.transforming = true;
-          this.scrollContent(moveY, 300);
+          this.scrollContent(moveY, this.animateMSTime);
         } else {
           this.currentPage = 1;
           this.toLastChapter();
@@ -1238,14 +1313,17 @@ export default {
         const moveX =
           -(this.windowSize.width - 16) * (this.currentPage - 1) -
           this.transformX;
-        this.transform(moveX, typeof duration === "undefined" ? 300 : duration);
+        this.transform(
+          moveX,
+          typeof duration === "undefined" ? this.animateMSTime : duration
+        );
       } else {
         const moveY =
           (this.windowSize.height - 10) * (this.currentPage - 1) -
           (document.documentElement.scrollTop || document.body.scrollTop);
         this.scrollContent(
           moveY,
-          typeof duration === "undefined" ? 300 : duration
+          typeof duration === "undefined" ? this.animateMSTime : duration
         );
       }
     },
@@ -1386,7 +1464,7 @@ export default {
       if (typeof rect.top !== "undefined") {
         this.scrollContent(
           rect.top -
-            30 -
+            (this.$store.state.miniInterface ? 30 : 0) -
             (window.webAppDistance | 0) -
             (this.$store.state.safeArea.top | 0),
           0,
@@ -1452,6 +1530,10 @@ export default {
         }
         return;
       }
+      if (this.autoReading) {
+        this.showToolBar = !this.showToolBar;
+        return;
+      }
       // 根据点击位置判断操作
       const midX = this.windowSize.width / 2;
       const midY = this.windowSize.height / 2;
@@ -1469,12 +1551,12 @@ export default {
         if (!this.showReadBar) {
           this.showToolBar = !this.showToolBar;
         }
-      } else if (this.$store.state.config.clickMethod === "下一页") {
+      } else if (this.$store.getters.config.clickMethod === "下一页") {
         // 全屏点击下一页
         this.showToolBar = false;
         this.nextPage();
         return;
-      } else if (this.$store.state.config.clickMethod === "不翻页") {
+      } else if (this.$store.getters.config.clickMethod === "不翻页") {
         // 全屏点击不翻页
         this.showToolBar = !this.showToolBar;
         return;
@@ -1580,7 +1662,7 @@ export default {
       }
       if (text && show) {
         setTimeout(() => {
-          if (this.$store.state.config.selectionAction === "过滤弹窗") {
+          if (this.$store.getters.config.selectionAction === "过滤弹窗") {
             this.showTextFilterPrompt(text);
           }
         }, 200);
@@ -1857,7 +1939,7 @@ export default {
           const pos = paragraph.getBoundingClientRect();
           this.scrollContent(
             pos.top -
-              30 -
+              (this.$store.state.miniInterface ? 30 : 0) -
               (window.webAppDistance | 0) -
               (this.$store.state.safeArea.top | 0),
             0
@@ -2099,10 +2181,15 @@ export default {
       });
       cacheChapterList.forEach(v => {
         this.cachingHandler(() => {
-          return this.getBookContent(v.index, {
-            timeout: 30000,
-            silent: true
-          });
+          return this.getBookContent(
+            v.index,
+            {
+              timeout: 30000,
+              silent: true
+            },
+            false,
+            true
+          );
         });
       });
     },
@@ -2111,6 +2198,73 @@ export default {
         this.cachingHandler.cancel();
         this.isCachingContent = false;
         this.cachingContentTip = "";
+      }
+    },
+    startAutoReading() {
+      this.showToolBar = false;
+      this.autoReading = true;
+      this.autoRead();
+    },
+    autoRead() {
+      if (!this.autoReading) {
+        return;
+      }
+      if (this.showToolBar) {
+        this.autoReadingTimer = setTimeout(() => {
+          this.autoRead();
+        }, 300);
+        return;
+      }
+      const current = this.getCurrentParagraph();
+      const next = this.getNextParagraph();
+      if (next) {
+        current.className = "reading";
+        next.className = "";
+        // 计算当前段落
+        let delayTime = this.config.autoReadingLineTime;
+        try {
+          const currentPos = current.getBoundingClientRect();
+          delayTime =
+            delayTime *
+            Math.ceil(
+              currentPos.height / this.config.fontSize / this.config.lineHeight
+            );
+        } catch (error) {
+          //
+        }
+        // console.log(delayTime, next);
+        this.autoReadingTimer = setTimeout(() => {
+          current.className = "";
+          next.className = "reading";
+          this.showParagraph(next, true);
+
+          setTimeout(() => {
+            this.autoRead();
+          }, 32);
+        }, delayTime);
+      } else {
+        // 下一章
+        this.$once("showContent", () => {
+          setTimeout(() => {
+            this.autoRead();
+          }, 100);
+        });
+        this.toNextChapter();
+      }
+    },
+    stopAutoReading() {
+      if (this.autoReadingTimer) {
+        clearInterval(this.autoReadingTimer);
+      }
+      this.autoReading = false;
+      const current = this.getCurrentParagraph();
+      current.className = "";
+    },
+    toggleAutoReading() {
+      if (this.autoReading) {
+        this.stopAutoReading();
+      } else {
+        this.startAutoReading();
       }
     }
   }
@@ -2209,7 +2363,54 @@ export default {
       justify-content: space-between;
       align-items: center;
       font-size: 14px;
-      position: relative;
+      position: absolute;
+      right: 55px;
+      width: 300px;
+      background: inherit;
+
+      .cache-content-btn {
+        cursor: pointer;
+      }
+    }
+
+    .refresh-item {
+      line-height: 32px;
+      width: 36px;
+      height: 36px;
+      border-radius: 100%;
+      display: block;
+      cursor: pointer;
+      text-align: center;
+      vertical-align: middle;
+      pointer-events: all;
+      position: absolute;
+      top: -240px;
+      left: 4px;
+      right: auto;
+
+      .el-icon-refresh-right {
+        line-height: 34px;
+      }
+    }
+
+    .auto-reading-item {
+      line-height: 36px;
+      width: 36px;
+      height: 36px;
+      border-radius: 100%;
+      display: block;
+      cursor: pointer;
+      text-align: center;
+      vertical-align: middle;
+      pointer-events: all;
+      position: absolute;
+      top: -180px;
+      left: 4px;
+      right: auto;
+
+      .el-icon-refresh-right {
+        line-height: 34px;
+      }
     }
 
     .headset-item {
@@ -2523,6 +2724,14 @@ export default {
     }
   }
 
+  >>>.refresh-item {
+    color: #121212;
+  }
+
+  >>>.auto-reading-item {
+    color: #121212;
+  }
+
   >>>.headset-item {
     color: #121212;
   }
@@ -2569,6 +2778,14 @@ export default {
   }
 
   >>>.reader-bar-inner {
+    color: #666;
+  }
+
+  >>>.refresh-item {
+    color: #666;
+  }
+
+  >>>.auto-reading-item {
     color: #666;
   }
 
@@ -2627,6 +2844,23 @@ export default {
     right: 0;
     width: 100vw;
     margin-right: 0 !important;
+
+    .cache-content-zone {
+      position: relative;
+      width: auto;
+      right: 0;
+      background: inherit;
+    }
+
+    .refresh-item {
+      left: auto;
+      right: 20px;
+    }
+
+    .auto-reading-item {
+      left: auto;
+      right: 20px;
+    }
 
     .headset-item {
       left: auto;
@@ -2774,6 +3008,40 @@ export default {
       border-color: #185798;
       color: #fff;
       box-shadow: none;
+    }
+  }
+}
+.kindle-page {
+  .day {
+    .tool-icon {
+      border: 1px solid #fefefefe;
+
+      .icon-text {
+        color: #444;
+      }
+    }
+
+    .progress-tip {
+      color: #444;
+    }
+
+    .cache-content-zone {
+      color: #444;
+    }
+
+    .reader-bar-inner {
+
+      .setting-title {
+        color: rgba(0, 0, 0, 0.8);
+      }
+
+      .setting-value {
+        color: #444;
+      }
+    }
+
+    .bottom-bar, .top-bar {
+      color: #444;
     }
   }
 }
